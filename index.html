@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Nook Refined</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+        
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: 'Inter', sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 280px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+
+        h1 { margin: 0 0 8px 0; font-size: 20px; color: #1a1a1a; font-weight: 600; }
+        p { margin: 0 0 20px 0; font-size: 13px; color: #666; line-height: 1.5; }
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        
+        button {
+            background: #f0f0f0; border: none; padding: 12px 16px; border-radius: 8px;
+            color: #333; font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s ease; text-align: left; display: flex;
+            justify-content: space-between; align-items: center;
+        }
+        button:hover { background: #e0e0e0; transform: translateX(2px); }
+        button.active { background: #333; color: white; }
+        
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-size: 14px; letter-spacing: 1px; pointer-events: none;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="loading">UPGRADING NOOK...</div>
+    <div id="canvas-container"></div>
+
+    <div id="ui-panel">
+        <h1>Classroom 4B</h1>
+        <p>Refined Nook with charging spots, leafy plants, a stocked library, and comfy cushions.</p>
+        
+        <div class="control-group">
+            <button id="btn-light">Toggle Nook Lights <span class="icon">✨</span></button>
+            <button id="btn-curtain">Privacy Curtains <span class="icon">🚪</span></button>
+            <div style="height: 10px;"></div>
+            <button onclick="cam('full')">View: Full Class <span class="icon">🏫</span></button>
+            <button onclick="cam('door')">View: Door Area <span class="icon">🚪</span></button>
+            <button onclick="cam('nook')" class="active">View: The Nook <span class="icon">🛋️</span></button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- TEXTURES ---
+        function createTexture(type) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff'; ctx.fillRect(0,0,1024,1024);
+
+            if(type === 'wood') {
+                ctx.fillStyle = '#8b5a2b'; ctx.fillRect(0,0,1024,1024);
+                ctx.fillStyle = '#a06b3a';
+                for(let i=0; i<500; i++) ctx.fillRect(Math.random()*1024, 0, Math.random()*2+1, 1024);
+            }
+            else if (type === 'rug') {
+                ctx.fillStyle = '#e8f5e9'; ctx.fillRect(0,0,1024,1024);
+                ctx.lineWidth = 20; ctx.strokeStyle = '#81c784';
+                for(let r=100; r<500; r+=60) { ctx.beginPath(); ctx.arc(512, 512, r, 0, Math.PI*2); ctx.stroke(); }
+            }
+            else if (type === 'tile') {
+                ctx.fillStyle = '#eee'; ctx.fillRect(0,0,1024,1024);
+                ctx.strokeStyle = '#ddd'; ctx.lineWidth = 5;
+                for(let i=0; i<=1024; i+=128) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,1024); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(1024,i); ctx.stroke(); }
+            }
+            else if (type === 'whiteboard') {
+                ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0,0,1024,1024);
+                ctx.lineWidth = 30; ctx.strokeStyle = '#333'; ctx.strokeRect(20,20,984,984);
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#333'; ctx.font = 'bold 80px sans-serif';
+                ctx.fillText("Pause.", 512, 350); ctx.fillText("Breathe.", 512, 512); ctx.fillText("Recharge.", 512, 674);
+                ctx.font = '80px sans-serif'; ctx.fillText("☮️", 750, 250); ctx.fillText(":) ", 800, 350);
+            }
+            else if (type === 'quote_peace') {
+                ctx.fillStyle = '#fff8e1'; ctx.fillRect(0,0,1024,1024);
+                ctx.lineWidth = 40; ctx.strokeStyle = '#5d4037'; ctx.strokeRect(40,40,944,944);
+                ctx.fillStyle = '#5d4037'; ctx.font = 'bold 100px serif'; ctx.textAlign='center';
+                ctx.fillText("PRIORITIZE", 512, 400); ctx.fillText("YOUR PEACE", 512, 600);
+            }
+            else if (type === 'quote_vibes') {
+                ctx.fillStyle = '#fce4ec'; ctx.fillRect(0,0,1024,1024);
+                ctx.lineWidth = 40; ctx.strokeStyle = '#c2185b'; ctx.strokeRect(40,40,944,944);
+                ctx.fillStyle = '#c2185b'; ctx.font = 'bold 110px cursive'; ctx.textAlign='center';
+                ctx.fillText("Positive", 512, 450); ctx.fillText("Vibes ✨", 512, 600);
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+        }
+
+        // --- SCENE ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xeef2f5);
+        scene.fog = new THREE.Fog(0xeef2f5, 10, 60);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+        
+        const renderer = new THREE.WebGLRenderer({antialias:true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.SoftShadowMap;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // --- MATERIALS ---
+        const matClassFloor = new THREE.MeshStandardMaterial({ map: createTexture('tile'), roughness: 0.6 });
+        const matWall = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+        const matWood = new THREE.MeshStandardMaterial({ map: createTexture('wood'), roughness: 0.6 });
+        const matMetal = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.4, metalness: 0.6 });
+        const matCurtain = new THREE.MeshStandardMaterial({ color: 0xfbfbfb, roughness: 0.8, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+        const sunLight = new THREE.DirectionalLight(0xfffaf0, 0.8);
+        sunLight.position.set(-10, 20, -10);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+
+        // --- BUILD NOOK GROUP ---
+        function createNook() {
+            const nook = new THREE.Group();
+            
+            // Rug
+            const rug = new THREE.Mesh(new THREE.CircleGeometry(2.5, 64), new THREE.MeshStandardMaterial({map:createTexture('rug')}));
+            rug.rotation.x = -Math.PI/2; rug.position.set(-1.5, 0.02, -1.5); rug.receiveShadow = true; nook.add(rug);
+
+            // Shelf
+            const shelf = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 3, 2.5), matWood);
+            body.position.set(0, 1.5, 0); body.castShadow = true; shelf.add(body);
+            // Visual shelves
+            const s1 = new THREE.Mesh(new THREE.PlaneGeometry(1.21, 2.3), new THREE.MeshBasicMaterial({color:0x111}));
+            s1.rotation.y = Math.PI/2; s1.position.set(0.61, 1.5, 0); shelf.add(s1);
+            const s2 = new THREE.Mesh(new THREE.PlaneGeometry(1.21, 2.3), new THREE.MeshBasicMaterial({color:0x111}));
+            s2.rotation.y = Math.PI/2; s2.position.set(0.61, 0.8, 0); shelf.add(s2);
+
+            // --- VISIBLE BOOKS ---
+            const bookColors = [0xd32f2f, 0x1976d2, 0x388e3c, 0xfbc02d, 0x8e24aa, 0xff5722];
+            // Top Shelf Books
+            for(let i=0; i<8; i++){
+                const h = 0.5 + Math.random()*0.3;
+                const b = new THREE.Mesh(new THREE.BoxGeometry(0.8, h, 0.15), new THREE.MeshStandardMaterial({color: bookColors[i%6]}));
+                b.position.set(0, 1.5 + h/2, -1 + i*0.2); b.castShadow=true; shelf.add(b);
+            }
+            // Bottom Shelf Books
+            for(let i=0; i<6; i++){
+                const h = 0.6 + Math.random()*0.3;
+                const b = new THREE.Mesh(new THREE.BoxGeometry(0.8, h, 0.15), new THREE.MeshStandardMaterial({color: bookColors[(i+3)%6]}));
+                b.position.set(0, 0.8 + h/2, -0.8 + i*0.2); b.castShadow=true; shelf.add(b);
+            }
+
+            shelf.position.set(-3.4, 0, -1.5); nook.add(shelf);
+            
+            // Medikit
+            const box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.6), new THREE.MeshStandardMaterial({color:0xffffff}));
+            box.position.set(0, 3.2, 0.5);
+            const cross = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.1, 0.3), new THREE.MeshBasicMaterial({color:0xff0000}));
+            cross.position.set(0, 3.2, 0.5);
+            const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.3, 0.1), new THREE.MeshBasicMaterial({color:0xff0000}));
+            crossV.position.set(0, 3.2, 0.5);
+            shelf.add(box, cross, crossV);
+
+            // --- CHARGING POT (SWITCH BOARD) ---
+            const switchBoard = new THREE.Group();
+            const plate = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.8), new THREE.MeshStandardMaterial({color: 0xeeeeee}));
+            switchBoard.add(plate);
+            const sL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12), new THREE.MeshBasicMaterial({color: 0x333}));
+            sL.rotation.z = Math.PI/2; sL.position.set(0.02, 0.05, -0.2); switchBoard.add(sL);
+            const sR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12), new THREE.MeshBasicMaterial({color: 0x333}));
+            sR.rotation.z = Math.PI/2; sR.position.set(0.02, 0.05, 0.2); switchBoard.add(sR);
+            const switchBtn = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.15, 0.1), new THREE.MeshBasicMaterial({color: 0x111}));
+            switchBtn.position.set(0.02, -0.1, 0); switchBoard.add(switchBtn);
+
+            switchBoard.position.set(-3.95, 2.5, -1.5);
+            nook.add(switchBoard);
+
+
+            // --- LEAFY PLANT 1 (On Shelf) ---
+            const pot1 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.1, 0.2), new THREE.MeshStandardMaterial({color:0xdddddd}));
+            pot1.position.set(0, 3.1, -0.8);
+            // Leaves
+            const leafGeo = new THREE.SphereGeometry(0.15, 8, 8);
+            leafGeo.scale(0.3, 1, 0.5);
+            const leaves1 = new THREE.Group();
+            for(let i=0; i<5; i++){
+                const l = new THREE.Mesh(leafGeo, new THREE.MeshStandardMaterial({color:0x4caf50}));
+                l.position.y = 0.1;
+                l.rotation.x = Math.PI/4;
+                l.rotation.y = i * (Math.PI*2/5);
+                leaves1.add(l);
+            }
+            pot1.add(leaves1);
+            shelf.add(pot1);
+
+            // Quotes
+            const mkSign = (tex, y, z) => {
+                const s = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({map: tex}));
+                s.position.set(-3.9, y, z); s.rotation.y = Math.PI/2; return s;
+            }
+            nook.add(mkSign(createTexture('quote_peace'), 4.2, -1.5));
+            nook.add(mkSign(createTexture('quote_vibes'), 3.2, -3));
+
+            // Right Wall Content
+            const board = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 2), new THREE.MeshBasicMaterial({map: createTexture('whiteboard')}));
+            board.position.set(-0.5, 3, -3.9); nook.add(board);
+            
+            // Fairy Lights Logic
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(-4, 4.5, 1), new THREE.Vector3(-4, 4.2, -2), new THREE.Vector3(-4, 4.5, -4),
+                new THREE.Vector3(-2, 4.2, -4), new THREE.Vector3(1, 4.5, -4)
+            ]);
+            const pts = curve.getPoints(30);
+            const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color:0x333333}));
+            nook.add(line);
+            
+            pts.forEach((p, i) => {
+                if(i%3 === 0 && i>0) {
+                    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06), new THREE.MeshStandardMaterial({color:0xffaa00, emissive:0xffaa00, emissiveIntensity:0}));
+                    bulb.position.copy(p); bulb.position.y -= 0.1; 
+                    nook.add(bulb);
+                    if(!nook.userData.bulbs) nook.userData.bulbs = []; nook.userData.bulbs.push(bulb);
+                    const pl = new THREE.PointLight(0xffaa00, 0, 3); pl.position.copy(p); 
+                    nook.add(pl);
+                    if(!nook.userData.lights) nook.userData.lights = []; nook.userData.lights.push(pl);
+                }
+            });
+
+            // Furniture
+            const bb = new THREE.Mesh(new THREE.SphereGeometry(1.2, 32, 16), new THREE.MeshStandardMaterial({color:0x78909c, roughness:0.9}));
+            bb.scale.set(1, 0.6, 1); bb.position.set(-1, 0.6, -2.5); bb.castShadow=true; nook.add(bb);
+            
+            // --- COMFORTABLE CUSHIONS ---
+            // Round cushion
+            const c1 = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 16), new THREE.MeshStandardMaterial({color:0x81d4fa, roughness:1}));
+            c1.scale.set(1, 0.4, 1); c1.position.set(-1.8, 0.2, -0.8); c1.castShadow=true; nook.add(c1);
+            
+            // Square cushion
+            const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.6), new THREE.MeshStandardMaterial({color:0xffb74d, roughness:1}));
+            c2.position.set(-0.5, 0.1, -1.0); c2.rotation.y = 0.5; c2.castShadow=true; nook.add(c2);
+
+            // --- LEAFY PLANT 2 (Floor) ---
+            const pot2 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.25, 0.4), new THREE.MeshStandardMaterial({color:0xffffff}));
+            pot2.position.set(1.5, 0.2, -3); pot2.castShadow=true;
+            const leaves2 = new THREE.Group();
+            // Make leafy plant (Snake plant style but more leaves)
+            for(let i=0; i<8; i++){
+                const l = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 0.25), new THREE.MeshStandardMaterial({color:0x2e7d32}));
+                l.position.y = 0.6; 
+                l.rotation.y = i * (Math.PI*2/8); 
+                l.rotation.x = (Math.random()-0.5)*0.2; // slight tilt
+                leaves2.add(l);
+            }
+            pot2.add(leaves2); nook.add(pot2);
+            
+            // Curtains
+            const cGroup = new THREE.Group();
+            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 5), new THREE.MeshStandardMaterial({color:0x444}));
+            post.position.set(0, 2.5, 0); cGroup.add(post);
+            const r1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 4), new THREE.MeshStandardMaterial({color:0x444}));
+            r1.rotation.z = Math.PI/2; r1.position.set(-2, 5, 0); cGroup.add(r1);
+            const r2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 4), new THREE.MeshStandardMaterial({color:0x444}));
+            r2.rotation.x = Math.PI/2; r2.position.set(0, 5, -2); cGroup.add(r2);
+            
+            const cGeo = new THREE.PlaneGeometry(4, 5);
+            window.curtain1 = new THREE.Mesh(cGeo, matCurtain);
+            window.curtain1.position.set(-2, 2.5, 0);
+            window.curtain2 = new THREE.Mesh(cGeo, matCurtain);
+            window.curtain2.position.set(0, 2.5, -2); window.curtain2.rotation.y = Math.PI/2;
+            cGroup.add(window.curtain1, window.curtain2);
+            nook.add(cGroup);
+
+            return nook;
+        }
+
+        // --- BUILD CLASSROOM ---
+        function createClassroom() {
+            // Room Dimensions: 20W x 24D
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, 24), matClassFloor);
+            floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; scene.add(floor);
+
+            // Walls
+            const wFront = new THREE.Mesh(new THREE.BoxGeometry(20, 6, 0.2), matWall); wFront.position.set(0, 3, -12); scene.add(wFront);
+            const greenboard = new THREE.Mesh(new THREE.BoxGeometry(8, 2.5, 0.3), new THREE.MeshStandardMaterial({color: 0x1e4d2b})); greenboard.position.set(0, 3.5, -11.8); scene.add(greenboard);
+            const wBack = new THREE.Mesh(new THREE.BoxGeometry(20, 6, 0.2), matWall); wBack.position.set(0, 3, 12); scene.add(wBack);
+            const wLeft = new THREE.Mesh(new THREE.BoxGeometry(0.2, 6, 24), matWall); wLeft.position.set(-10, 3, 0); scene.add(wLeft);
+            for(let z=-6; z<=6; z+=6) { const win = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3, 3), new THREE.MeshStandardMaterial({color: 0x87CEEB})); win.position.set(-10, 3.5, z); scene.add(win); }
+
+            // Right Wall (With Door)
+            const wRight1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 6, 16), matWall); wRight1.position.set(10, 3, 4); scene.add(wRight1); 
+            const wRight2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 6, 4), matWall); wRight2.position.set(10, 3, -10); scene.add(wRight2); 
+            const doorHeader = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2, 4), matWall); doorHeader.position.set(10, 5, -6); scene.add(doorHeader);
+            
+            // Door
+            const door = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4, 3.8), matWood); door.position.set(10, 2, -6); 
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(0.4, 4.2, 4), new THREE.MeshStandardMaterial({color:0x333})); frame.position.set(10, 2.1, -6);
+            scene.add(door, frame);
+
+            // Desks
+            for(let z=-6; z<=6; z+=4) {
+                for(let x=-6; x<=6; x+=4) {
+                    if (x > 2 && z > 4) continue; 
+                    const deskGroup = new THREE.Group();
+                    const top = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1), matWood); top.position.y = 1; top.castShadow = true;
+                    const legGeo = new THREE.CylinderGeometry(0.05, 0.05, 1);
+                    const l1 = new THREE.Mesh(legGeo, matMetal); l1.position.set(-1.4, 0.5, -0.4);
+                    const l2 = new THREE.Mesh(legGeo, matMetal); l2.position.set(1.4, 0.5, -0.4);
+                    const l3 = new THREE.Mesh(legGeo, matMetal); l3.position.set(-1.4, 0.5, 0.4);
+                    const l4 = new THREE.Mesh(legGeo, matMetal); l4.position.set(1.4, 0.5, 0.4);
+                    const chair = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 1), new THREE.MeshStandardMaterial({color:0x333})); chair.position.set(0, 0.5, 0.8);
+                    deskGroup.add(top, l1, l2, l3, l4, chair); deskGroup.position.set(x, 0, z); scene.add(deskGroup);
+                }
+            }
+        }
+        createClassroom();
+
+        // --- PLACE NOOK ---
+        const nook = createNook();
+        nook.rotation.y = Math.PI; 
+        nook.position.set(6, 0, 8);
+        scene.add(nook);
+
+        // --- CAMERA ---
+        camera.position.set(-8, 8, 18);
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        document.getElementById('loading').style.display = 'none';
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // --- INTERACTIVITY ---
+        
+        let lightsActive = false;
+        document.getElementById('btn-light').addEventListener('click', function() {
+            lightsActive = !lightsActive;
+            this.classList.toggle('active');
+            
+            // Toggle Nook lights only
+            if(nook.userData.lights) { nook.userData.lights.forEach(l => l.intensity = lightsActive ? 1 : 0); }
+            if(nook.userData.bulbs) { nook.userData.bulbs.forEach(b => b.material.emissiveIntensity = lightsActive ? 2 : 0); }
+        });
+
+        let curtainsClosed = true;
+        document.getElementById('btn-curtain').addEventListener('click', function() {
+            curtainsClosed = !curtainsClosed;
+            this.classList.toggle('active');
+            const targetScale = curtainsClosed ? 1 : 0.2;
+            const targetX = curtainsClosed ? -2 : -3.6;
+            const targetZ = curtainsClosed ? -2 : -3.6;
+            window.curtain1.scale.x = targetScale; window.curtain1.position.x = targetX;
+            window.curtain2.scale.x = targetScale; window.curtain2.position.z = targetZ;
+        });
+
+        window.cam = function(view) {
+            document.querySelectorAll('button').forEach(b => { if(b.innerHTML.includes('View')) b.classList.remove('active'); });
+            if (view === 'full') moveCam(-8, 8, 18, 0, 0, 0);
+            else if (view === 'door') moveCam(6, 4, -2, 10, 2, -6);
+            else if (view === 'nook') moveCam(2, 3, 4, 8, 1, 10);
+        }
+
+        function moveCam(x, y, z, tx, ty, tz) {
+            camera.position.set(x, y, z); controls.target.set(tx, ty, tz); controls.update();
+        }
+
+        // Init: Open curtains
+        document.getElementById('btn-curtain').click();
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
